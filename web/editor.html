@@ -1,0 +1,64 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <!-- AIOE_INLINE_CSS -->
+</head>
+<body>
+  <div class="topbar">
+    <div class="hint">Drag to create masks. Click a mask to select. Drag inside to move. Drag corners to resize. Del = delete. Undo: Ctrl/⌘+Z, Redo: Ctrl/⌘+Y or Ctrl/⌘+Shift+Z. Zoom: Ctrl/⌘+wheel.</div>
+    <div class="stats" id="stats"></div>
+  </div>
+
+  <div class="main">
+    <div class="stage" id="stage">
+      <div class="wrap" id="wrap">
+        <img id="img" alt="" />
+        <canvas id="cv"></canvas>
+      </div>
+    </div>
+
+    <div class="side">
+      <div class="section">
+        <div class="title">Metadata</div>
+
+        <label class="lbl">Title</label>
+        <input id="title" class="inp" type="text" placeholder="e.g., Rheumatoid arthritis: synovitis" />
+
+        <label class="lbl">Explanation</label>
+        <textarea id="explanation" class="ta" rows="6" placeholder="Short explanation for this image/card set."></textarea>
+
+        <div class="row">
+          <button id="btnGenMeta" class="btn">AI generate title/explanation (optional)</button>
+        </div>
+        <div class="small" id="metaStatus"></div>
+      </div>
+
+      <div class="section">
+        <div class="title">Masks</div>
+        <div class="list" id="maskList"></div>
+      </div>
+
+      <div class="section">
+        <div class="title">AI Suggestions (optional)</div>
+        <div class="row">
+          <button id="btnAcceptAll" class="btn">Add all suggestions</button>
+          <button id="btnClearSug" class="btn">Clear suggestions</button>
+        </div>
+        <div class="small" id="aiStatus"></div>
+      </div>
+
+      <div class="section">
+        <div class="title">Export</div>
+        <div class="row">
+          <button id="btnExport" class="btn primary">Export to Anki</button>
+          <button id="btnClear" class="btn">Clear all</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- AIOE_INLINE_JS -->
+</body>
+</html>

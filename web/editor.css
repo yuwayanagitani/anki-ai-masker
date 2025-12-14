@@ -1,0 +1,120 @@
+html, body {
+  height: 100%;
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  background: #111;
+  color: #eee;
+}
+
+.topbar {
+  padding: 8px 10px;
+  border-bottom: 1px solid #2a2a2a;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.hint { font-size: 12px; color: #bbb; line-height: 1.4; }
+.stats { font-size: 12px; color: #ddd; }
+
+.main {
+  display: grid;
+  grid-template-columns: 1fr 300px;
+  height: calc(100% - 41px);
+}
+
+.stage {
+  position: relative;
+  background: #0b0b0b;
+  display: flex;
+
+  /* ✅ 中央寄せをやめて、スクロール領域を素直にする */
+  align-items: flex-start;
+  justify-content: flex-start;
+
+  overflow: auto;
+
+  /* ✅ 端を超えて動かせる“余白”（好みで調整OK） */
+  padding: 64px;
+  box-sizing: border-box;
+
+  min-height: 200px;
+}
+
+.wrap {
+  position: relative;
+  display: inline-block;
+
+  /* ✅ 小さい時は中央、拡大して大きくなったら margin は実質 0 になり端までスクロール可能 */
+  margin: auto;
+}
+
+#img { display: block; max-width: 100%; max-height: 100%; }
+
+#cv {
+  position: absolute;
+  left: 0; top: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: auto;
+}
+
+.side {
+  border-left: 1px solid #2a2a2a;
+  background: #151515;
+  padding: 10px;
+  overflow: auto;
+}
+
+.section { margin-bottom: 14px; }
+.title { font-size: 13px; color: #ddd; margin-bottom: 8px; }
+
+.list { display: flex; flex-direction: column; gap: 6px; }
+
+.item {
+  border: 1px solid #2a2a2a;
+  border-radius: 10px;
+  padding: 8px;
+  cursor: pointer;
+  background: #111;
+}
+
+.item.sel { border-color: #5aa2ff; }
+.item .meta { font-size: 11px; color: #aaa; margin-top: 4px; }
+
+.row { display: flex; gap: 8px; flex-wrap: wrap; }
+
+.btn {
+  background: #222;
+  color: #eee;
+  border: 1px solid #333;
+  border-radius: 12px;
+  padding: 8px 10px;
+  cursor: pointer;
+  font-size: 12px;
+}
+.btn:hover { background: #2a2a2a; }
+
+.btn.primary {
+  background: #2b64ff;
+  border-color: #2b64ff;
+}
+.btn.primary:hover { filter: brightness(1.1); }
+
+.small { font-size: 11px; color: #bbb; margin-top: 6px; line-height: 1.4; }
+
+/* ===== Metadata inputs ===== */
+.lbl{ display:block; font-size:11px; color:#bbb; margin:8px 0 4px; }
+.inp, .ta{
+  width:100%;
+  box-sizing:border-box;
+  background:#0f0f0f;
+  color:#eee;
+  border:1px solid #333;
+  border-radius:10px;
+  padding:8px 10px;
+  font-size:12px;
+}
+.ta{ resize: vertical; }
+.inp:focus, .ta:focus{ outline:none; border-color:#5aa2ff; }

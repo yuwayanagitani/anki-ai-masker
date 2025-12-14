@@ -1,0 +1,53 @@
+{
+  "01_general": {
+    "enabled": true,
+    "note_type_name": "Image Masker",
+    "always_update_note_type_templates": false,
+    "auto_open_browser_after_create": false
+  },
+  "02_editor": {
+    "add_editor_button": true,
+    "editor_button_label": "🖼️",
+    "editor_button_tooltip": "Create / edit image occlusion notes"
+  },
+  "03_masks": {
+    "default_fill_front": "rgba(245,179,39,1)",
+    "default_fill_other": "rgba(255,215,0,0.35)",
+    "default_stroke": "rgba(0,0,0,0.65)",
+    "outline_width_px": 2
+  },
+  "04_ai": {
+    "enable_ai": false,
+    "enable_metadata_ai": false,
+    "provider": "openai",
+    "max_suggestions": 24,
+    "openai": {
+      "api_key_env": "OPENAI_API_KEY",
+      "base_url": "https://api.openai.com/v1/responses",
+      "max_output_tokens": 800,
+      "model": "gpt-4.1-mini",
+      "timeout_sec": 45
+    },
+    "gemini": {
+      "api_key_env": "GEMINI_API_KEY",
+      "endpoint": "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent",
+      "max_output_tokens": 800,
+      "model": "gemini-2.5-flash",
+      "timeout_sec": 45
+    }
+  },
+  "05_image_processing": {
+    "display": {
+      "max_side_px": 1600,
+      "jpeg_quality": 85
+    },
+    "ai_suggest": {
+      "max_side_px": 1024,
+      "jpeg_quality": 80
+    },
+    "ai_metadata": {
+      "max_side_px": 800,
+      "jpeg_quality": 80
+    }
+  }
+}

@@ -1,0 +1,3 @@
+.aioe-wrap { position: relative; display: inline-block; }
+.aioe-img { display: block; max-width: 100%; height: auto; }
+.aioe-cv { position: absolute; left: 0; top: 0; width: 100%; height: 100%; pointer-events: none; }

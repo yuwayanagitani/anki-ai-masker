@@ -1,0 +1,10 @@
+{
+  "package": "ai_image_masker",
+  "name": "Image Masker (Grouped Occlusion)",
+  "mod": 1765568452,
+  "conflicts": [],
+  "min_point_version": 0,
+  "max_point_version": 0,
+  "human_version": "0.2.0",
+  "homepage": "https://ankiweb.net/shared/addons/"
+}
