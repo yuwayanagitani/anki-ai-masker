@@ -7,6 +7,7 @@ import os
 import re
 import time
 import urllib.request
+import urllib.error
 import uuid
 import copy
 from typing import Any, Optional, cast
@@ -49,15 +50,12 @@ ADDON_DIR = os.path.dirname(__file__)
 MODEL_NAME_DEFAULT = "Image Masker"
 FIELD_IMAGEFILE = "ImageFile"
 FIELD_IMAGEHTML = "ImageHTML"
-FIELD_MASKSB64 = "MasksB64"
-FIELD_ACTIVEIDX = "ActiveIndex"
 FIELD_GROUPID = "GroupId"
-FIELD_EXTRA = "Extra"
 FIELD_SORTKEY = "SortKey"
 FIELD_TITLE = "Title"
 FIELD_EXPLANATION = "Explanation"
-FIELD_MASKLABEL = "MaskLabel"
 FIELD_NO = "No"
+FIELD_INTERNAL = "InternalData"
 
 
 # -------------------- config --------------------
@@ -562,10 +560,9 @@ def ensure_note_type() -> None:
     """
 
     def _data_attrs(side: str) -> str:
+        # Phase 3: rendering reads InternalData only (no legacy data-active / data-masks-b64)
         return (
             f'data-side="{side}" '
-            f'data-active="{{{{{FIELD_ACTIVEIDX}}}}}" '
-            f'data-masks-b64="{{{{{FIELD_MASKSB64}}}}}" '
             f'data-fill-front="{_cfg_get(["03_masks","default_fill_front"], "rgba(245,179,39,1)")}" '
             f'data-fill-other="{_cfg_get(["03_masks","default_fill_other"], "rgba(255,215,0,0.35)")}" '
             f'data-stroke="{_cfg_get(["03_masks","default_stroke"], "rgba(0,0,0,0.65)")}" '
@@ -579,6 +576,7 @@ def ensure_note_type() -> None:
     <div class="aioe-title">{_fld(FIELD_TITLE)}</div>
     <div class="aioe-center">
       <div id="aioe-root" {_data_attrs("front")}>
+      <script class="aioe-internal" type="application/json">{_fld(FIELD_INTERNAL)}</script>
         {_fld(FIELD_IMAGEHTML)}
       </div>
     </div>
@@ -589,6 +587,7 @@ def ensure_note_type() -> None:
     <div class="aioe-title">{_fld(FIELD_TITLE)}</div>
     <div class="aioe-center">
       <div id="aioe-root" {_data_attrs("back")}>
+      <script class="aioe-internal" type="application/json">{_fld(FIELD_INTERNAL)}</script>
         {_fld(FIELD_IMAGEHTML)}
       </div>
     </div>
@@ -608,7 +607,7 @@ def ensure_note_type() -> None:
 
     def _apply_field_ui_defaults(model: dict) -> None:
         # 例：見た目に直接関係しないものを折りたたむ（好みで調整OK）
-        for fn in [FIELD_IMAGEFILE, FIELD_MASKSB64, FIELD_ACTIVEIDX, FIELD_GROUPID, FIELD_MASKLABEL]:
+        for fn in [FIELD_IMAGEFILE, FIELD_INTERNAL, FIELD_GROUPID]:
             _set_field_collapsed(model, fn, True)
 
         # 表示上触りやすいものは開いたまま（必要なら True にしてOK）
@@ -620,7 +619,13 @@ def ensure_note_type() -> None:
 
     def _field_names(model: dict) -> list[str]:
         flds = model.get("flds") or []
-        return [f.get("name") for f in flds if isinstance(f, dict)]
+        names: list[str] = []
+        for f in flds:
+            if isinstance(f, dict):
+                name = f.get("name")
+                if isinstance(name, str):
+                    names.append(name)
+        return names
 
     need_fields = [
         FIELD_SORTKEY,
@@ -629,10 +634,8 @@ def ensure_note_type() -> None:
         FIELD_TITLE,
         FIELD_NO,
         FIELD_IMAGEFILE,
-        FIELD_MASKSB64,
-        FIELD_ACTIVEIDX,
         FIELD_GROUPID,
-        FIELD_MASKLABEL,        
+        FIELD_INTERNAL,  
     ]
 
     if not m:
@@ -827,22 +830,44 @@ def _import_qimage_to_media(img: QImage, prefix: str = "clipboard") -> str | Non
     return filename
 
 
-def _encode_masks(masks: list[dict]) -> str:
-    payload = {"v": 1, "masks": masks}
-    txt = json.dumps(payload, ensure_ascii=False)
-    return base64.b64encode(txt.encode("utf-8")).decode("ascii")
 
-
-def _decode_masks(b64: str) -> list[dict]:
+def _pack_internal(
+    image_filename: str,
+    group_id: str,
+    active_index: int,
+    masks: list[dict],
+) -> str:
+    """
+    Phase 1: store a consolidated internal JSON payload while keeping legacy fields.
+    Stored as plain JSON string (not base64) for easier future migration/debug.
+    """
+    payload = {
+        "v": 1,
+        "image": image_filename or "",
+        "group": group_id or "",
+        "active": int(active_index),
+        "masks": masks if isinstance(masks, list) else [],
+    }
     try:
-        raw = base64.b64decode(b64.encode("ascii"), validate=False)
-        obj = json.loads(raw.decode("utf-8", errors="replace"))
-        masks = obj.get("masks")
-        if isinstance(masks, list):
-            return cast(list[dict], masks)
+        return json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
     except Exception:
-        pass
-    return []
+        # last-resort fallback
+        return "{}"
+
+
+def _unpack_internal(s: str) -> dict[str, Any] | None:
+    if not s:
+        return None
+    t = (s or "").strip()
+    if not t:
+        return None
+    try:
+        obj = json.loads(t)
+        if isinstance(obj, dict) and int(obj.get("v", 0) or 0) >= 1:
+            return cast(dict[str, Any], obj)
+    except Exception:
+        return None
+    return None
 
 
 def _int_or0(s: Any) -> int:
@@ -850,6 +875,30 @@ def _int_or0(s: Any) -> int:
         return int(str(s).strip())
     except Exception:
         return 0
+
+
+def _note_get_str(note: Any, field_name: str, default: str = "") -> str:
+    """Best-effort read of a note field across Anki builds.
+
+    Some Anki builds expose Note as a mapping with __getitem__ only;
+    others also provide .get(). We want to avoid KeyError when a legacy
+    field is missing from the model.
+    """
+    if note is None:
+        return default
+
+    try:
+        if hasattr(note, "get"):
+            v = note.get(field_name, default)
+            return str(v or "")
+    except Exception:
+        pass
+
+    try:
+        v = note[field_name]
+        return str(v or "")
+    except Exception:
+        return default
 
 
 def _media_data_url_scaled(filename: str, max_side: int = 1600, jpeg_quality: int = 85) -> str:
@@ -1267,8 +1316,18 @@ def _openai_gen_meta(image_bytes: bytes, mime: str) -> dict[str, str]:
         with urllib.request.urlopen(req, timeout=timeout) as resp:
             obj = json.loads(resp.read().decode("utf-8", errors="replace"))
     except urllib.error.HTTPError as e:
-        raw = e.read().decode("utf-8", errors="replace")
-        raise RuntimeError(f"OpenAI HTTPError {e.code}: {raw}")
+        raw = ""
+        try:
+            raw = e.read().decode("utf-8", errors="replace")
+        except Exception:
+            pass
+        raise RuntimeError(f"HTTPError {e.code}: {raw}") from e
+
+    except urllib.error.URLError as e:
+        raise RuntimeError(f"Network error: {e.reason}") from e
+
+    except Exception as e:
+        raise RuntimeError(f"Unexpected error during HTTP request: {e}") from e
 
     txt = ""
     for item in obj.get("output", []) or []:
@@ -1329,8 +1388,18 @@ def _gemini_gen_meta(image_bytes: bytes, mime: str) -> dict[str, str]:
         with urllib.request.urlopen(req, timeout=timeout) as resp:
             obj = json.loads(resp.read().decode("utf-8", errors="replace"))
     except urllib.error.HTTPError as e:
-        raw = e.read().decode("utf-8", errors="replace")
-        raise RuntimeError(f"Gemini HTTPError {e.code}: {raw}")
+        raw = ""
+        try:
+            raw = e.read().decode("utf-8", errors="replace")
+        except Exception:
+            pass
+        raise RuntimeError(f"HTTPError {e.code}: {raw}") from e
+
+    except urllib.error.URLError as e:
+        raise RuntimeError(f"Network error: {e.reason}") from e
+
+    except Exception as e:
+        raise RuntimeError(f"Unexpected error during HTTP request: {e}") from e
 
     text = ""
     cands = obj.get("candidates", [])
@@ -1473,12 +1542,26 @@ class MaskEditorDialog(QDialog):
         if not mw.col or not self.existing_note_id:
             return
         note = mw.col.get_note(self.existing_note_id)
-        self.image_filename = note[FIELD_IMAGEFILE] or ""
-        self.group_id = note[FIELD_GROUPID] or ""
-        self.masks = _decode_masks(note[FIELD_MASKSB64] or "")
+        internal_raw = _note_get_str(note, FIELD_INTERNAL, "")
+        internal = _unpack_internal(internal_raw)
 
-        self.title = note.get(FIELD_TITLE, "") if hasattr(note, "get") else note[FIELD_TITLE] or ""
-        self.explanation = note.get(FIELD_EXPLANATION, "") if hasattr(note, "get") else note[FIELD_EXPLANATION] or ""
+        if internal:
+            self.image_filename = str(internal.get("image", "") or "")
+            self.group_id = str(internal.get("group", "") or "")
+            masks_obj = internal.get("masks", [])
+            self.masks = cast(list[dict], masks_obj) if isinstance(masks_obj, list) else []
+
+            # fallback for older notes or partial payloads
+            if not self.image_filename:
+                self.image_filename = _note_get_str(note, FIELD_IMAGEFILE, "")
+            if not self.group_id:
+                self.group_id = _note_get_str(note, FIELD_GROUPID, "")
+        else:
+            self.image_filename = _note_get_str(note, FIELD_IMAGEFILE, "")
+            self.group_id = _note_get_str(note, FIELD_GROUPID, "")
+        
+        self.title = _note_get_str(note, FIELD_TITLE, "")
+        self.explanation = _note_get_str(note, FIELD_EXPLANATION, "")
 
         self.status.setText(f"Editing group: {self.group_id}\nImage: {self.image_filename}")
 
@@ -1758,26 +1841,27 @@ class MaskEditorDialog(QDialog):
 
     def _create_notes_for_group(self, group_id: str, image_filename: str, masks: list[dict]) -> None:
         deck_id = mw.col.decks.current()["id"]
-        masks_b64 = _encode_masks(masks)
 
         for i, m in enumerate(masks):
             note = self._new_note()
 
             note[FIELD_IMAGEFILE] = image_filename
             note[FIELD_IMAGEHTML] = f'<img class="aioe-img" src="{image_filename}">'
-            note[FIELD_MASKSB64] = masks_b64
-            note[FIELD_ACTIVEIDX] = str(i)
             note[FIELD_GROUPID] = group_id
 
-            mask_label = (m.get("label", "") if isinstance(m, dict) else "")
             no = i + 1
             title_primary = (self.title or image_filename)
 
             note[FIELD_NO] = str(no)
             note[FIELD_SORTKEY] = f"{title_primary} #{no:03d}"
             note[FIELD_TITLE] = self.title
-            note[FIELD_MASKLABEL] = mask_label
             note[FIELD_EXPLANATION] = self.explanation
+            note[FIELD_INTERNAL] = _pack_internal(
+                image_filename=image_filename,
+                group_id=group_id,
+                active_index=i,
+                masks=masks,
+            )
 
             mw.col.add_note(note, deck_id)
 
@@ -1786,13 +1870,15 @@ class MaskEditorDialog(QDialog):
 
     def _sync_group_notes(self, group_id: str, image_filename: str, masks: list[dict]) -> None:
         deck_id = mw.col.decks.current()["id"]
-        masks_b64 = _encode_masks(masks)
 
         nids = mw.col.find_notes(f'{FIELD_GROUPID}:"{group_id}"')
         by_idx: dict[int, int] = {}
         for nid in nids:
             note = mw.col.get_note(nid)
-            idx = _int_or0(note[FIELD_ACTIVEIDX])
+            no = _int_or0(note[FIELD_NO])
+            if no <= 0:
+                continue
+            idx = no - 1
             by_idx[idx] = nid
 
         created = 0
@@ -1801,24 +1887,26 @@ class MaskEditorDialog(QDialog):
                 note = mw.col.get_note(by_idx[i])
             else:
                 note = self._new_note()
-                note[FIELD_ACTIVEIDX] = str(i)
                 note[FIELD_GROUPID] = group_id
                 mw.col.add_note(note, deck_id)
                 created += 1
 
             note[FIELD_IMAGEFILE] = image_filename
             note[FIELD_IMAGEHTML] = f'<img class="aioe-img" src="{image_filename}">'
-            note[FIELD_MASKSB64] = masks_b64
 
-            mask_label = (m.get("label", "") if isinstance(m, dict) else "")
             no = i + 1
             title_primary = (self.title or image_filename)
 
             note[FIELD_NO] = str(no)
             note[FIELD_SORTKEY] = f"{title_primary} #{no:03d}"
             note[FIELD_TITLE] = self.title
-            note[FIELD_MASKLABEL] = mask_label
             note[FIELD_EXPLANATION] = self.explanation
+            note[FIELD_INTERNAL] = _pack_internal(
+                image_filename=image_filename,
+                group_id=group_id,
+                active_index=i,
+                masks=masks,
+            )
             note.flush()
 
         mw.col.save()
@@ -1833,7 +1921,7 @@ class MaskEditorDialog(QDialog):
         if extra_nids:
             msg = (
                 f"This group has {len(extra_nids)} extra note(s).\n"
-                f"(ActiveIndex >= {len(masks)})\n\n"
+                f"(active index >= {len(masks)})\n\n"
                 "Delete them?"
             )
             if askUser(msg, parent=self):

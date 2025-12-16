@@ -1,14 +1,26 @@
 (function(){
   "use strict";
 
-  function b64ToUtf8(b64) {
-    try { return decodeURIComponent(escape(atob(b64 || ""))); }
-    catch (e) { try { return atob(b64 || ""); } catch (_) { return ""; } }
-  }
+  function parseInternal(root) {
+    try {
+      const el = root.querySelector("script.aioe-internal");
+      if (!el) return null;
 
-  function parseMasksB64(b64) {
-    const txt = b64ToUtf8(b64);
-    try { return JSON.parse(txt); } catch (e) { return { v: 1, masks: [] }; }
+      const txt = (el.textContent || "").trim();
+      if (!txt) return null;
+
+      const obj = JSON.parse(txt);
+      if (!obj || typeof obj !== "object") return null;
+      if ((obj.v | 0) < 1) return null;
+
+      const masks = Array.isArray(obj.masks) ? obj.masks : null;
+      const active = Number.isFinite(Number(obj.active)) ? Number(obj.active) : 0;
+
+      if (!masks) return null;
+      return { masks, active };
+    } catch (e) {
+      return null;
+    }
   }
 
   function ensureWrapper(img) {
@@ -56,10 +68,13 @@
     const lw = style.outline_px || 2;
 
     masks.forEach((m, idx) => {
-      const x = m.x * r.width;
-      const y = m.y * r.height;
-      const w = m.w * r.width;
-      const h = m.h * r.height;
+      if (!m) return;
+      const x = (Number(m.x) || 0) * r.width;
+      const y = (Number(m.y) || 0) * r.height;
+      const w = (Number(m.w) || 0) * r.width;
+      const h = (Number(m.h) || 0) * r.height;
+
+      if (w <= 0 || h <= 0) return;
 
       if (side === "front") {
         ctx.fillStyle = (idx === activeIndex) ? fillFront : fillOther;
@@ -79,10 +94,6 @@
 
   function initOne(root) {
     const side = root.getAttribute("data-side") || "front";
-    const activeIndex = parseInt(root.getAttribute("data-active") || "0", 10) || 0;
-    const masksB64 = root.getAttribute("data-masks-b64") || "";
-    const parsed = parseMasksB64(masksB64);
-    const masks = Array.isArray(parsed.masks) ? parsed.masks : [];
 
     const style = {
       fill_front: root.getAttribute("data-fill-front") || "",
@@ -90,6 +101,12 @@
       stroke: root.getAttribute("data-stroke") || "",
       outline_px: parseInt(root.getAttribute("data-outline-px") || "2", 10) || 2,
     };
+
+    const parsed = parseInternal(root);
+    if (!parsed) return;
+
+    const masks = parsed.masks;
+    const activeIndex = parsed.active;
 
     const img = root.querySelector("img");
     if (!img) return;
